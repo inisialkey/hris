@@ -64,3 +64,17 @@ Two design skills are installed and may auto-trigger on UI work. Platform split 
 ## Definition of Done
 
 Before marking any file complete in `PROGRESS.md`, run the checklist in `HANDBOOK_SPEC.md` §12. No exceptions.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `inisialkey/hris`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary — `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` (root glossary) + `docs/adr/`. See `docs/agents/domain.md`.
