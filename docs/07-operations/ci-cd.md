@@ -434,6 +434,8 @@ testing-strategy §9 requires the smoke suite to run on a dedicated tenant that 
 - **Protection applies to administrators.** The escape hatch is §2's logged environment approval, not a silent force-push.
 - **Branch protection is checked for drift weekly** (C10): a committed `required-checks.yml` against what the API reports, failing on mismatch. Someone quietly unchecking a required status check is a real and otherwise invisible failure. It rides the same scheduled workflow as C5 — one weekly job, two drift checks, no new machinery.
 
+**`hris-handbook` follows this section too** *(added 2026-08-05, when protection was first applied)*. `ADR-0019` §1's trunk-based model and naming-conventions §12's branch types are not scoped to the three implementation repositories, and the handbook repository was briefly and wrongly put on gitflow before that was noticed (issue #1). It is squash-merged onto a single `main` like everything else. Its protection: pull request required on `main`, force-push and deletion blocked, `enforce_admins` on, **zero** required approvals, and no required status checks. The last two are forced rather than chosen — one collaborator cannot approve their own pull request, so this section's `1` deadlocks the repository until a second engineer joins, and a required check that no workflow reports blocks every pull request forever. Wiring `erd-check` and `guide-check` into CI is what makes that second setting safe to raise. A-180.
+
 Residual, stated: branch protection lives in GitHub settings rather than in the repository, so the matrix in §5 and the actual configuration can diverge for up to a week.
 
 ## 14. Exclusions and future improvements
