@@ -1,0 +1,43 @@
+name: checks
+
+# Runs the handbook's two derivation checks on every pull request into main.
+#
+# Deliberately unfiltered by path. A required status check that is skipped on
+# some pull requests never reports on them, and GitHub treats "never reported"
+# as "not yet passing" — the merge blocks forever. The job takes seconds, so
+# running it on changes it cannot possibly affect is cheaper than the outage.
+#
+# ci-cd.md specifies no pipeline for this repository; every gate in it is scoped
+# to the three implementation repositories. This workflow is a separate decision
+# (A-181, issue #3). What it inherits from the handbook are the two rules that
+# are not so scoped: actions pinned by commit SHA (security-standards.md §137,
+# ci-cd.md §375) and trunk-based, squash-merged development (ADR-0019 §1).
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  handbook:
+    name: handbook
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout v7.0.1. Pinned by commit SHA and never by tag: a tag is
+      # mutable and an action runs with repository secrets in scope. Bumping it
+      # is a deliberate commit that names the new version in this comment.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # No actions/setup-node. Both scripts are Node stdlib ESM with no
+      # dependencies and no package.json, and the runner image ships Node — so
+      # this is one fewer third-party action to pin, audit, and keep current.
+      - name: erd-check
+        run: node scripts/erd-check.mjs
+
+      - name: guide-check
+        run: node scripts/guide-check.mjs
