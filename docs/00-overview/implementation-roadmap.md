@@ -32,9 +32,15 @@ An unmarked ordering claim is a defect in this document.
 
 ### 2.1 Capacity
 
-**Roughly three to five engineers, no QA role, plus a part-time statutory advisor** (A-162). This is an input, not a target, and it is recorded so a reader can reverse every parallelism claim in one place if it changes.
+**One engineer plus an AI agent** *(revised 2026-08-05, issue #6 — this section originally read "roughly three to five engineers, no QA role, plus a part-time statutory advisor", and this is the reversal it invited)*. It remains an input, not a target, and it stays recorded here so the next change is one edit rather than an archaeology.
 
-The handbook has implied a team this size repeatedly without ever stating it: A-102 refuses a manual UAT gate because *"the org model has no QA role; inventing a gate here would invent a person"*; `ci-cd.md` §11 sets one approving review because *"on a team of this size a two-reviewer rule manufactures rubber stamps"*; `ADR-0019` rejects a release train partly on *"real coordination cost that grows with team size"*. Three repositories (A-006) put a floor under it — below someone who can carry Flutter, someone NestJS, and someone Next.js, the split is cost without benefit.
+The reversal is deliberately narrow. **The sequence in §4 does not change** — it is ordered by dependency, not by headcount, and a dependency does not care who discharges it. What changes is that §3's three workstreams **no longer run concurrently across people**. Track 2's *"no runtime dependency at all"* stays true and stays the most useful ordering fact in the handbook, but at this capacity it means **schedulable at any moment**, not *running beside track 1*. Read every parallelism claim below as an ordering freedom, not as simultaneity.
+
+**Track 3 has an owner and it is the maintainer** (A-163, confirmed 2026-08-05). An AI agent cannot hold it: `CLAUDE.md` prohibits inventing a regulatory number, which is the entirety of the job. That makes §8's release gate the schedule's real constraint — 119 markers, none discharged, and the only person who can discharge them is also the only person writing the code.
+
+**A-006's three repositories stand** (confirmed 2026-08-05). This paragraph originally put a floor under the team size — *"below someone who can carry Flutter, someone NestJS, and someone Next.js, the split is cost without benefit"* — and that floor is now crossed. It is not binding, because it was an efficiency argument about one human context-switching across three stacks, and `ADR-0019` rejected the monorepo on a different and sturdier ground: the mobile client's version skew, which does not weaken as the team shrinks. Three deploy targets remain a fact about the product rather than about the team.
+
+The rest of what this section recorded is unchanged and now holds more strongly: A-102 refuses a manual UAT gate because *"the org model has no QA role; inventing a gate here would invent a person"*; `ci-cd.md` §11 sets one approving review because *"on a team of this size a two-reviewer rule manufactures rubber stamps"* — in this repository that is already zero, because one maintainer cannot approve their own pull request (A-180); and `ADR-0019` rejects a release train partly on *"real coordination cost that grows with team size"*.
 
 **No calendar dates appear in this document.** See §10.
 
@@ -48,6 +54,9 @@ This file leans on unaccepted decisions harder than any other. `CLAUDE.md` makes
 | §4.4 — the statutory calculators run in parallel from day one | `ADR-0018` decisions 3 and 4, structural vectors on a fictional rate set | the parallel track disappears; payroll returns to the end of the queue |
 | §4.4, §8 — the verification gate is scoped to reachable calculators | `ADR-0018` Consequences, the `pending-verification` counter | the gate is global; nothing reaches production until all 119 markers are discharged |
 | §8 — rollback is rehearsed once; availability has a number | `ADR-0019` decision 5, `ADR-0021` | rollback depth and the availability target become unnumbered |
+| §4.1 item 1 — the walking skeleton opens with three repositories that can read this handbook | `ADR-0025` decisions 1 and 2, the pinned submodule at `docs/handbook/` and the single ADR namespace | bootstrap has no defined way to reach the handbook, and the deviation path in `ai-development-guide.md` §3 has nowhere to write |
+
+*(Row added 2026-08-05, issue #6. This document was written before `ADR-0025` existed and mentions it nowhere, so the table was incomplete rather than wrong — the dependency was live and unstated, which is the one thing the paragraph above says is not allowed.)*
 
 One decision is deliberately **not** on that list. `PeriodLockPort` ownership has no ADR, but the decision was made and is in force: `docs/06-modules/attendance.md` §4.2 owns the port, grilled 2026-08-02, and `holiday.md` BR-HOL-008, `shift.md` BR-SHF-009, and `organization.md` BR-ORG-008 all cite it with the same sentence — *"the module that owns the frozen data owns the freezing"*. That is documentation debt, not a dependency.
 
