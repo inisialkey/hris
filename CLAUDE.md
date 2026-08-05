@@ -69,7 +69,9 @@ Before marking any file complete in `PROGRESS.md`, run the checklist in `HANDBOO
 
 ### Issue tracker
 
-GitHub Issues on `inisialkey/hris`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+GitHub Issues on `inisialkey/hris-handbook`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+One namespace, per `ADR-0025` decision 2: `hris-api`, `hris-admin`, and `hris-mobile` file handbook issues and pull requests **here**, not in their own trackers.
 
 ### Triage labels
 
