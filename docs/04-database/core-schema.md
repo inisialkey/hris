@@ -294,11 +294,13 @@ One deliberate wrinkle: the **login flow** (email → candidate tenants, ADR-000
 | `0001_extensions` | `btree_gist` (later effective-dated tables), citext not used (email uniqueness is per-tenant exact) |
 | `0002_platform` | enums, `tenants`, `platform_users`, `permissions` |
 | `0003_identity` | `users`, `devices`, `sessions` + RLS `-- manual:` |
-| `0004_rbac` | `roles`, `role_permissions`, `user_roles` + RLS; `-- manual:` `UNIQUE NULLS NOT DISTINCT` rewrite of `uq_user_roles_assignment` |
-| `0005_org_core` | `companies`, `employees`, `counters` + RLS; `-- manual:` NULLS NOT DISTINCT on `uq_counters_scope` |
+| `0004_org_core` | `companies`, `employees`, `counters` + RLS; `-- manual:` NULLS NOT DISTINCT on `uq_counters_scope` |
+| `0005_rbac` | `roles`, `role_permissions`, `user_roles` + RLS; `-- manual:` `UNIQUE NULLS NOT DISTINCT` rewrite of `uq_user_roles_assignment` |
 | `0006_events` | `domain_events`, `processed_events` |
 
 Drizzle cannot express `NULLS NOT DISTINCT` — those two uniques are hand-rewritten in the generated migration (`-- manual:` block), which is why PostgreSQL 16+ is pinned (A-010).
+
+**Order corrected 2026-08-05** (`hris-api` walking skeleton). `rbac` and `org_core` were the other way round, and the pair does not commute: `user_roles.company_id` references `companies.id` (§6), so creating `user_roles` before `companies` fails on the foreign key. The dependency runs one way only — nothing in `org_core` references an RBAC table — so swapping them is the whole fix, and the numbering moves with it. Found by generating the migrations against the list rather than by reading it.
 
 ## 11. Seeds
 

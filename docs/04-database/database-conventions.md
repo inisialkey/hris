@@ -188,11 +188,17 @@ ALTER TABLE leave_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE leave_requests FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON leave_requests
   FOR ALL
-  USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
-  WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
+  USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+  WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
 ```
 
 `current_setting(..., true)` yields `NULL` when unset → policy evaluates false → **zero rows / rejected writes by default**. A request that forgets to set the variable reads nothing rather than everything.
+
+**`NULLIF` is what makes the sentence above true on the second request** *(corrected 2026-08-05, `hris-api` walking skeleton — the template previously omitted it)*. `set_config(..., true)` is transaction-local, so at commit the setting does not disappear: it reverts to its **reset value**, and for a custom GUC that has been set at least once on that backend the reset value is the **empty string**, not `NULL`. `''::uuid` then raises `invalid input syntax for type uuid` instead of yielding `NULL`.
+
+The consequence is narrow and unpleasant. On a *fresh* connection the documented behaviour holds exactly. On every connection that has already served one tenant-scoped request — which, behind a pool, is all of them — a query that forgets `set_config` **errors** rather than returning zero rows. Still fail-closed, so nothing leaks; but it is a `SYS_INTERNAL` where three documents promise an empty result, and multi-tenancy §5's **L2** asserts the empty result explicitly, so the leak matrix as specified failed against the policy as specified. It was found by running it (`implementation-roadmap.md` §4.1: *"every mechanism below has been designed and none has been run"*).
+
+`NULLIF` restores the promise for both cases at no cost: unset and reset-to-empty both become `NULL`, `tenant_id = NULL` is `NULL`, and the policy denies.
 
 3. Roles: `hris_migrator` owns objects, runs migrations, and carries `BYPASSRLS` (grilled 2026-08-02: `FORCE` binds the owner too — without the bypass, in-migration DML on tenant-class rows silently affects zero rows). The runtime connects as **`hris_app`** — not the owner, no `BYPASSRLS` (hence `FORCE` + non-owner double lock). Platform-level operations (Super Admin, cross-tenant jobs) follow ADR-0002 — never by handing `BYPASSRLS` to `hris_app`. A third narrow role, `hris_auth` (pre-tenant auth lookups via `SET LOCAL ROLE`), is defined in `docs/02-architecture/multi-tenancy.md` §4.
 4. BullMQ workers processing tenant data open their transaction the same way — job payloads always carry `tenantId`.
