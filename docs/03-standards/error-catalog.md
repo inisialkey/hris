@@ -86,6 +86,8 @@ Field-level codes — appear only inside `details[].code`, never top-level; `det
 | `AUTH_RESET_TOKEN_INVALID` | 401 | Reset token unknown, expired, or already used — one code, no distinction leaked | — | authentication.md BR-AUTH-010 |
 | `AUTH_INVITE_TOKEN_INVALID` | 401 | Invite token unknown, expired, or already used | — | authentication.md BR-AUTH-010 |
 
+**Field-level codes** inside `AUTH_PASSWORD_POLICY_VIOLATION` entries (registered 2026-08-06 — entry codes, never top-level responses, so they add no rows above): `AUTH_PASSWORD_BREACHED` — the password is on the platform breached-list; `AUTH_PASSWORD_DERIVED` — the password contains the account's email local part or the tenant name. Length violations reuse `VAL_TOO_SHORT` / `VAL_TOO_LONG` (§4).
+
 Tenant-selection after multi-tenant email match is a **success flow** (200 + choices), not an error — no code.
 
 ## 6. `AUTHZ_` — authorization (owner: `docs/05-platform/authorization-rbac.md`)
