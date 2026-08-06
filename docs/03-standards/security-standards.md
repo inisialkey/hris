@@ -125,6 +125,8 @@ The single list consumed by Pino `redact`, Sentry `beforeSend` (all three SDKs),
 
 Adding a sensitive field anywhere in the system = adding it here in the same change (same-session registry rule). Telemetry carries identifiers only (ADR-0011); this registry is the enforcement list, not the policy.
 
+**This is a telemetry registry, and audit-log diffs do not read it** (audit-log BR-AUD-005, amended 2026-08-06). "May this value appear in a log line" and "may this value appear in the evidence of record" are different questions: a salary in a log stream is a leak, a salary in an audit diff is the point. Audit masking derives from ADR-0016 column types, a credential-and-token floor drawn from this list's auth cluster, and each table's own audit-log §4.2 note. Nothing else here filters an audit column.
+
 ## 11. Supply chain
 
 - Lockfiles committed in all three repos; automated dependency PRs (Renovate) with grouped minor updates.

@@ -27,7 +27,7 @@ No write surface exists — rows are system-appended only. Super Admin reads via
 | BR-AUD-002 | **Channel 1 — same-transaction capture:** mutations to tables in the audited-table registry (§4.2) write their audit row inside the mutating transaction via the repository hook — atomic with the change: no lost audits on crash, no phantom rows on rollback. This is the only reliable source of before-images. |
 | BR-AUD-003 | **Channel 2 — fact consumption:** action facts already published as domain events (§12 list) are consumed by `on.` handlers into audit rows, deduped by `event_id` (partial unique). Facts carry pointers, not diffs — correct for create/action facts where "before" is meaningless. |
 | BR-AUD-004 | One fact, one home: the approval engine's `approval_actions` table is the authoritative approval trail — audit stores only instance-terminal headlines (submit/step detail is NOT duplicated here). Settings history lives in effective-dated rows — audit stores the change fact; the values table is its own before/after. |
-| BR-AUD-005 | **Diff masking reuses the security-standards §10 redaction registry** — one list, no second registry to drift. Masked columns record `{ masked: true }` (the fact that it changed, never the value); everything else stores before/after verbatim. Adding a sensitive field = §10 edit, audit masking follows automatically. |
+| BR-AUD-005 | **Diff masking is decided per audited table in §4.2, in three layers.** (1) **Derived, not listed** — a column of ADR-0016's `encryptedText` type masks automatically. This follows the schema, so `employees.npwp` masks while `companies.npwp` diffs in full: same name, right answer both times, no list to keep in sync. (2) **Floor** — credential and token material (§10's auth cluster: passwords, PINs, session/refresh/FCM tokens, signed-URL query strings) never enters a diff on any table, whatever that table's note says. It carries no evidentiary value the action key does not already carry. (3) **Per-table** — everything else is the table's §4.2 masking note, which is the operative list. A column matched by none of the three diffs in full; that is the default and it is deliberate, because an audit row that omits what changed is not evidence. **Money columns diff in full** — the amount is the fact being attested to. Masked columns record `{ masked: true }`, **one marker for all three layers** (the fact that it changed, never the value); §4.2's prose `[encrypted]` and `[redacted]` say *why* a column is masked, they are not a second and third wire format. **Amended 2026-08-06 (issue #21):** this rule previously read "reuses the security-standards §10 redaction registry". §10 is a *telemetry* registry — its question is "may this value appear in a log line", not "may this value appear in the evidence of record", and the two answers differ on money. Read literally it masked every `salary_histories`, `payroll_runs` and `expense_claim_lines` amount that §4.2's own notes exist to preserve, and `payload` would have masked channel 2 out of its own row; meanwhile §4.2 already masks `leave_requests.reason` and three `candidates` columns that appear nowhere in §10, and diffs `company_bpjs_registrations` numbers that do. The registry was never the operative list — it was cited before §4.2 was populated. The anti-drift property it claimed is replaced by layer 1, which is automatic and exact, plus the same-session §4.2 registration rule already in force. |
 | BR-AUD-006 | Rows store **ids, not names** — rendering joins live data at read time; UU PDP erasure/crypto-shredding of the source leaves audit rows meaningful ("employee `<id>` (removed)") without holding erased personal data. |
 | BR-AUD-007 | Registered **sensitive reads** (§4.3) are audited via explicit port call: payslip/tax-document URL mints, employee-master sensitive-field views, audit-log queries themselves, every impersonated request. Bulk list views are not sensitive reads; single-subject sensitive access is. |
 | BR-AUD-008 | Every row carries `request_id` (ADR-0011 correlation) and the acting identity: `actor_type` `user \| system \| platform_op`; impersonation records both `actor_user_id` (the impersonated identity) and `impersonator_id` (multi-tenancy §1 context) — neither is ever inferred. |
@@ -79,6 +79,8 @@ Migration revokes `UPDATE`/`DELETE` from `hris_app` on both tables (hand-written
 
 Modules declare audited tables in their §4 (**"Audited: yes — registered in audit-log §4.2"**) and append here in the same session. The repository base hook (TenantScopedRepository) reads this registry: INSERT → `created` (after only), UPDATE → `updated` (changed-column diff), soft/hard DELETE → `deleted` (before only).
 
+**The masker reads this registry as code, and it fails loud.** A table audited without an entry throws at module init rather than defaulting to a full diff — a table nobody classified is a table nobody thought about, and the failure belongs at startup, not in a diff that already shipped.
+
 Registered audited tables (modules append on arrival, same session):
 
 | Table | Owner | Masking notes |
@@ -90,7 +92,7 @@ Registered audited tables (modules append on arrival, same session):
 | `job_levels` | organization.md BR-ORG-009 | no sensitive columns; full diffs |
 | `positions` | organization.md BR-ORG-009 | no sensitive columns; full diffs |
 | `org_assignments` | organization.md BR-ORG-009 | no sensitive columns; full diffs |
-| `employees` | employee.md BR-EMP-011 | encrypted set (NIK/NPWP/BPJS/bank) diffs as `[encrypted]` change markers — never ciphertext or plaintext; `ptkp_status` masked per security-standards §10 |
+| `employees` | employee.md BR-EMP-011 | encrypted set (NIK/NPWP/BPJS/bank) masks by column type, BR-AUD-005 layer 1 — never ciphertext or plaintext. `ptkp_status` masks **by this note**, not by derivation: ADR-0016 §14 leaves it unencrypted on purpose (the tax engine reads it for every employee every run), so nothing about the schema would mask it |
 | `employee_contracts` | employee.md BR-EMP-011 | no sensitive columns; full diffs |
 | `employee_family_members` | employee.md BR-EMP-011 | no sensitive columns; full diffs |
 | `employee_documents` | employee.md BR-EMP-011 | no sensitive columns; full diffs |
@@ -103,7 +105,7 @@ Registered audited tables (modules append on arrival, same session):
 | `attendance_corrections` | attendance.md BR-ATT-017 | no sensitive columns; full diffs — the HR-direct path has no approval instance, so this trail is the only control on it |
 | `attendance_periods` | attendance.md BR-ATT-017 | no sensitive columns; full diffs — lock and unlock acts, unlock reason included |
 | `leave_types` | leave.md BR-LVE-018 | no sensitive columns; full diffs — quota, eligibility, and paid-flag edits are policy changes that move money |
-| `leave_requests` | leave.md BR-LVE-018 | `reason` may carry health context on sick leave — masked per security-standards §10; otherwise full diffs. Registered despite being a request aggregate because the HR-direct file-and-cancel path has no approval instance, so this trail is the only control on it (`attendance_corrections` precedent) |
+| `leave_requests` | leave.md BR-LVE-018 | `reason` may carry health context on sick leave — masked **by this note**; §10 does not list `reason` and never did. Otherwise full diffs. Registered despite being a request aggregate because the HR-direct file-and-cancel path has no approval instance, so this trail is the only control on it (`attendance_corrections` precedent) |
 | `overtime_requests` | overtime.md BR-OVT-017 | no sensitive columns; full diffs. The bulk-order path creates requests `approved` with no chain instance, so this trail — with `ordered_by` and `acknowledged_at` on the row — is the only record that the work was instructed and consented to |
 | `overtime_exempt_job_levels` | overtime.md BR-OVT-017 | full diffs. Adding a job level here removes overtime-pay entitlement from everyone placed in it; the diff is who decided that and when |
 | `salary_histories` | payroll.md BR-PAY-023 | full diffs. Amounts are not field-encrypted (ADR-0016 amendment 1), so the diff carries real numbers — who changed whose pay, from what, to what, effective when |
@@ -123,7 +125,7 @@ Registered audited tables (modules append on arrival, same session):
 | `asset_incidents` | asset.md BR-AST-018 | full diffs. Carries `charged_amount` and `charged_to_employee_id` — a decision that someone owes the company money, taken with no approval chain behind it (BR-AST-009), so this diff is its only control |
 | `job_requisitions` | recruitment-candidate.md BR-REC-019 | full diffs. `openings`, `position_id`, and `close_reason` are what an approval was given over, and §7 locks the approved fields on an `open` requisition — this trail is how an unlocked edit would be caught |
 | `requisition_publications` | recruitment-candidate.md BR-REC-019 | full diffs; no sensitive columns |
-| `candidates` | recruitment-candidate.md BR-REC-017 | **`full_name`, `email`, and `phone` diff as a `[redacted]` change marker — never as values, in either direction.** The row is otherwise fully diffed. This is the `employees` `[encrypted]` treatment arrived at from the opposite direction: there the plaintext must not be written because it is encrypted at rest, here because UU PDP erasure runs as an in-place anonymization and a full diff would leave a permanent, queryable copy of exactly what the purge deleted — a purge that files the evidence instead of destroying it |
+| `candidates` | recruitment-candidate.md BR-REC-017 | **`full_name`, `email`, and `phone` are masked — never as values, in either direction.** The row is otherwise fully diffed. This is the `employees` encrypted-set treatment arrived at from the opposite direction: there the plaintext must not be written because it is encrypted at rest, here because UU PDP erasure runs as an in-place anonymization and a full diff would leave a permanent, queryable copy of exactly what the purge deleted — a purge that files the evidence instead of destroying it |
 | `job_applications` | recruitment-candidate.md BR-REC-019 | full diffs. `stage`, `status`, and `rejection_reason` are the funnel's raw material, and `employee_id` is the provenance link that survives the candidate's anonymization |
 | `job_offers` | recruitment-candidate.md BR-REC-019 | full diffs. `offered_base_salary` is the figure a chain approved; a revision is a **new row**, so the trail already shows negotiation as history rather than as edits — this diff catches anyone editing a `draft` after review |
 | `interviews` | recruitment-candidate.md BR-REC-019 | full diffs. Panel changes and reschedules are the contested facts when an interview is disputed |
@@ -192,7 +194,7 @@ Registry grows the same-session way.
 export const AUDIT_QUERY_PORT = Symbol('AUDIT_QUERY_PORT');
 
 export interface AuditQueryPort {
-  /** Same filters as GET /audit/logs, bounded rather than cursor-paged. Masking per §10 already applied. */
+  /** Same filters as GET /audit/logs, bounded rather than cursor-paged. Masking per BR-AUD-005 already applied. */
   search(filter: {
     entityType?: string; entityId?: string; actorUserId?: string;
     action?: string; actorType?: 'user' | 'system'; companyId?: string;
@@ -208,7 +210,7 @@ Two properties are deliberate. The port is **offset-paged while `GET /audit/logs
 
 ## 5. Use Cases
 
-**UC-AUD-001 — Channel-1 capture.** Repository hook on an audited table: compute changed columns (the optimistic-lock read supplies "before" for free), apply §10-registry masking, insert the audit row in the ambient transaction (BR-AUD-002). System actors (jobs) stamp `actor_type system` + job metadata.
+**UC-AUD-001 — Channel-1 capture.** Repository hook on an audited table: compute changed columns (the optimistic-lock read supplies "before" for free), apply BR-AUD-005 masking, insert the audit row in the ambient transaction (BR-AUD-002). System actors (jobs) stamp `actor_type system` + job metadata.
 
 **UC-AUD-002 — Channel-2 capture.** `on.<event>` handler (queue `events`): map event → action/entity fields, insert with `event_id`; conflict → no-op (redelivery). Impersonation/actor fields come from the event payload's context, not the worker's.
 
@@ -274,7 +276,7 @@ Response 200: `{ day, verified: boolean, rowCount, digest }` — recompute-and-c
 
 - **Rollback after channel-1 insert:** row dies with the transaction — exactly right (the mutation never happened).
 - **Event never delivered (outbox row stuck / handler exhausted):** fact missing from audit until the failed job is replayed from the DLQ — the outbox row is the recovery source; anchor digests computed later include the late row on its *insert* day, not the fact day (`occurredAt` keeps fact time; anchors hash by insert order — divergence is visible, not hidden).
-- **Redaction-registry lag:** a column marked sensitive *after* rows captured it plaintext — existing rows are immutable (BR-AUD-001); remediation is an operational decision (targeted archive-early), not a silent rewrite. Register sensitive fields *with* the column, not after (§10 same-session law exists for this).
+- **Masking-note lag:** a column marked sensitive *after* rows captured it plaintext — existing rows are immutable (BR-AUD-001); remediation is an operational decision (targeted archive-early), not a silent rewrite. Classify a column in the table's §4.2 note *with* the column, not after — the same-session registry law exists for this. BR-AUD-005 layer 1 is the one case with no lag: an `encryptedText` column masks from its first insert with nothing to remember.
 - **Actor deleted/erased:** ids render "(removed)" (BR-AUD-006); rows stand.
 - **Clock skew across pods:** `occurredAt` = DB `now()` per insert (single clock); cursor keyset on `(occurred_at, id)` absorbs same-millisecond ties via uuidv7.
 - **Huge diffs (jsonb bloat):** diffs store changed columns only; jsonb-heavy audited columns (chain snapshots) are registered as `exclude` in the audited-table entry — the fact suffices, the blob lives in the source table.
@@ -315,6 +317,8 @@ Events consumed (the promises made by earlier docs, honored verbatim): `auth.ses
 |---|---|
 | Channel-1: update on an audited table → row with changed-column diff, same tx; rollback → no row | BR-AUD-002 |
 | Masking: NIK change → `{ masked: true }`, no value anywhere (incl. jsonb raw dump assert) | BR-AUD-005 |
+| Masking: a salary amount change → **both figures present verbatim** in the diff; `companies.npwp` diffs in full while `employees.npwp` masks | BR-AUD-005 |
+| Masking: audited table with no §4.2 entry → module init throws, no partial audit | §4.2 |
 | Channel-2: event redelivery → single row (event_id unique) | BR-AUD-003 |
 | `UPDATE`/`DELETE` as `hris_app` → permission denied (grant test, Testcontainers) | BR-AUD-001 |
 | Anchor: compute → verify true; flip one row via superuser → verify false + Sentry | BR-AUD-009 |
