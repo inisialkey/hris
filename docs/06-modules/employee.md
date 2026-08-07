@@ -529,7 +529,7 @@ Events emitted (outbox): `employee.status.changed` `{ employeeId, companyId, sta
     employeeId: string; employeeNumber: string; fullName: string;
     companyId: string; branchId: string; departmentId: string | null;
     hireDate: string; exitDate: string | null; birthDate: string;
-    status: 'active' | 'on_leave' | 'suspended' | 'terminated' | 'resigned';
+    status: 'active' | 'on_leave' | 'resigned' | 'terminated';  // §4.1's enum; `suspended` removed 2026-08-07 — it is a *tenant* status and this column cannot hold it (A-195)
     contractKind: 'pkwt' | 'pkwtt'; contractEndDate: string | null;
     ptkpStatus: string; hasNpwp: boolean; religion: string | null;
     bankName: string | null; bankAccountNumber: string | null; bankAccountHolder: string | null;
@@ -584,12 +584,14 @@ Events emitted (outbox): `employee.status.changed` `{ employeeId, companyId, sta
   ```sql
   -- src/database/schema/views/employee_directory.sql — owned and versioned by this module
   CREATE VIEW employee_directory WITH (security_invoker = true) AS
-  SELECT id AS employee_id, tenant_id, company_id, user_id, employee_number, full_name, status
+  SELECT id AS employee_id, tenant_id, company_id, user_id, employee_number, full_name, status, join_date
   FROM employees
   WHERE deleted_at IS NULL;
   ```
 
   **`user_id` added 2026-08-03 (announcement.md), which is the addition this entry's own rule anticipated.** The consumer is announcement's fan-out: inbox acknowledgment items and push notifications are addressed to **users**, `employees.user_id` is nullable — null means no login at all — and it lives on a table no other module may join. A batch enrichment port cannot close it for the same structural reason the view exists: announcement's eligibility filter (`active` or `on_leave` **and** holding an account) has to run inside the resolution query over ten thousand rows, not on a page of results afterwards. `user_id` is neither ADR-0016 encrypted nor BR-EMP-003 masked — it is an opaque identifier already used as a join key across the platform — so the column list stays exactly the boundary this entry defines it to be.
+
+  **`join_date` added 2026-08-07 (this module's own arrival), which is the second addition this entry's rule anticipated.** The consumer is organization: a placement may not precede the employment it moves (BR-ORG-002, `plan-placement.ts`), and `EmployeeLookupRepository` had been reading `employees` directly for exactly that column under an `A-194:` marker since 2026-08-06. `join_date` is neither ADR-0016 encrypted nor BR-EMP-003 masked — it is on every contract and every payslip — so the column list stays the boundary this entry defines. With it, **A-194 decision 5 is retired in full**: organization now joins the view everywhere it joined the table, and the one remaining direct read there is `user_roles`, because authorization-rbac publishes no view.
 
   **What it is for.** Every transactional grid in Phase 3 renders `employee: { id, employeeNumber, fullName }` and offers a `q=` search over the employee's name and number — attendance, leave, overtime, expense, and now asset. None of them had a sanctioned channel for it: `OrgQueryPort` returns IDs only, and `EmployeePayrollPort` is the wrong tool by construction (it decrypts NIK, NPWP, and bank details and writes a sensitive-read audit row per batch — correct for a payroll roster, absurd for painting a name into a grid). A batch enrichment port cannot close the gap either, because a filter or a sort on `full_name` must run **before** the page boundary and a port returns rows after it.
 
