@@ -103,6 +103,32 @@ Registry entry contract: `{ key, allowedMimes, maxSizeBytes (ceiling), sizeSetti
 
 Size caps tunable downward via `document.<category>_max_size_mb` settings where registered (this session: `document.employee_document_max_size_mb`, `document.receipt_max_size_mb` — the two admins actually ask about; others stay registry-fixed until needed). Owning modules bind their concrete permission keys + resolvers in their §2/§13 on arrival.
 
+**The `ownershipResolver` port, declared 2026-08-07 (A-197, hris-api implementation).** Nine module documents say *"this module's ownership resolver"* and this section called it `(module port)`; nothing anywhere gave it a shape, which made it the one field of the entry contract an implementer had to invent. It is declared here rather than in each owning module because it is a **consumer contract this module publishes** — the `registerAuditedTables` relationship, not the `EmployeePayrollPort` one — and one shape is what lets the generic endpoints run one check.
+
+```ts
+export interface EntityRef { entityType: string; entityId: string }
+
+export interface FileOwner {
+  /** `files.module` — the owning namespace (naming §4). */
+  readonly module: string;
+  /** The entity types this owner resolves; anything else is not its file. */
+  readonly entityTypes: readonly string[];
+  canWrite(ref: EntityRef): Promise<boolean>;
+  canRead(ref: EntityRef): Promise<boolean>;
+  canDelete(ref: EntityRef): Promise<boolean>;
+  /** §12's `document.download.gated_export` half: whether *this* file's mint is a
+   *  sensitive read. Null for the ordinary case; the category's own
+   *  `sensitiveReadKey` covers a category where every mint is one. */
+  sensitiveReadKey?(file: FileRow): Promise<string | null>;
+}
+```
+
+**`writePermission` and `readPermission` are answered inside those predicates rather than declared beside them**, and the seed table is why: half its rows state a gate no static key can express — *"self, or `expense.claim.create`"*, *"or a live approver of its instance"*, *"or being a recipient of the announcement"*, *"while the claim is `draft` or `returned`"*. Keeping the expressible half as registry data and the rest as prose would have left the rest unenforced. §2's *"category permission **+** ownership resolver"* is unchanged as a rule; it is one call that answers both halves, in the module that holds the keys.
+
+**Every predicate returns `false`, never an error** — §2 already says a scope miss is 404, and it is the reason this module has no permission keys of its own to raise a 403 with.
+
+**A category with no registered owner is not live.** A slot request for one is 404, not an unguarded upload — which makes registration the gate rather than a decoration, and means the nine categories whose owning module has not shipped carry their full policy and refuse every request until it does.
+
 ## 5. Use Cases
 
 **UC-DOC-001 — Request upload slot.** Client: category, entityType/entityId, fileName, declared mime + size. Registry check (category live, mime whitelisted, size ≤ effective cap) → write gate + ownership resolver → sanitized name, generated `fileId` + staging path → staged row → signed PUT (exact mime, size range) valid 15 min. Errors: `DOC_TYPE_NOT_ALLOWED`, `DOC_SIZE_EXCEEDED`.
