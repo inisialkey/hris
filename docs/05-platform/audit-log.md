@@ -85,6 +85,8 @@ Registered audited tables (modules append on arrival, same session):
 
 | Table | Owner | Masking notes |
 |---|---|---|
+| `approval_chains` | approval-engine.md §4 (added 2026-08-07, A-196) | no sensitive columns; full diffs. Configuration, not trail: a chain decides who approves a payroll run, which is the same class of act as a role grant, and BR-AUD-004 keeps the *instance* out without saying anything about what produced it |
+| `approval_delegations` | approval-engine.md §4 (added 2026-08-07, A-196) | no sensitive columns; full diffs. A grant of authority to act in someone else's name. Revocation is an `UPDATE` of `revoked_at` rather than a delete, so the diff records who ended it and when |
 | `holidays` | holiday.md BR-HOL-009 | no sensitive columns; full diffs |
 | `companies` | organization.md BR-ORG-009 | no sensitive columns; full diffs |
 | `branches` | organization.md BR-ORG-009 | no sensitive columns; full diffs |
@@ -168,7 +170,7 @@ The five tax parameter tables — `tax_ptkp_amounts`, `tax_ter_rates`, `tax_brac
 
 **Asset excludes nothing** (2026-08-03, asset.md BR-AST-018) — all four of its tables are above. It has no approval engine anywhere in it (BR-AST-013), so unlike attendance, leave, overtime, and expense there is no `approval_actions` trail running beside these rows and no chain decision to read a history from. The channel-1 diff is the sole control on every act the module performs, which is `attendance_corrections`' reasoning applied to a whole module instead of one path.
 
-Tables covered by channel 2 (evented facts) or that are themselves trails (`approval_actions`, `setting_values`, `domain_events`, `employee_status_history`, request aggregates per BR-AUD-004) stay out by design.
+Tables covered by channel 2 (evented facts) or that are themselves trails (`approval_actions`, `setting_values`, `domain_events`, `employee_status_history`, request aggregates per BR-AUD-004) stay out by design. The engine's execution tables — `approval_instances`, `approval_steps`, `approval_assignees` — are out for the same reason as `approval_actions`: every claim and every step transition is already in that trail, and a channel-1 diff of them would be a second copy of it. Its two **configuration** tables are in, above (2026-08-07).
 
 **Platform-class tables cannot be registered here at all** (2026-08-04, system-administration.md BR-ADM-023) — a mechanical limit rather than a judgement, and the only one in this registry. The hook named at the top of this section lives on `TenantScopedRepository`; `tenants`, `tenant_keys`, `tenant_feature_flags`, `impersonation_sessions`, and `platform_sessions` are reached by platform repositories that do not inherit it, so listing them would name tables the hook can never see. Their coverage is **explicit port calls instead**, one row per mutation, filed under the target tenant's id with `actor_type = 'platform_op'` per §9's cross-tenant-platform-operations rule — the ten `sysadmin.*` action strings are enumerated in system-administration.md §4.6. With that, no auditable table in the handbook is left unaccounted for.
 

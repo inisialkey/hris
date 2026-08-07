@@ -64,6 +64,28 @@ stateDiagram-v2
 
 Assignments have no lifecycle: created → hard-deleted on revoke, history in the audit log (core-schema §6 note). Invariants: `uq_roles_tenant_id_key` (live rows); `uq_user_roles_assignment` with `NULLS NOT DISTINCT` (duplicate grant = validation error, not silent dedupe); `role_permissions` rows always reference live catalog keys at write time.
 
+### 4.1 Port served — `RoleHolderPort`
+
+Added 2026-08-07 with its first caller (A-196). This module is otherwise consumed through the guard and `PermissionResolverService`, so this is its first declared port; it exists because `user_roles` is this module's table and ADR-0001 rule 2 forbids anyone else reading it.
+
+```ts
+export interface RoleHolderPort {
+  /**
+   * Users holding the role in the company, **plus every holder of it
+   * tenant-wide** — a tenant-scoped assignment reaches every company under
+   * ADR-0005, so excluding those holders would hide the tenant-wide HR Admin
+   * from the fallback that names them.
+   */
+  holderUserIds(roleId: string, companyId: string): Promise<string[]>;
+  /** `null` when the tenant has no live role with that key. */
+  findIdByKey(key: string): Promise<string | null>;
+  /** approval-engine §8's resolver-ref check — live role, this tenant. */
+  exists(roleId: string): Promise<boolean>;
+}
+```
+
+Two of approval-engine's rungs need it and neither can be served any other way: the `role_holders` resolver names a role by **id** (BR-APRV-006), while `approval.fallback_role` names one by **key** (`hr_admin` by default, settings.md §4.2) — so both lookups are declared rather than one, and a consumer is never asked to translate between them.
+
 ## 5. Use Cases
 
 **UC-AUTHZ-001 — Resolve effective permissions (every request).** Actor: PermissionGuard. Cache hit → key check. Miss → one query (assignments ⋈ role_permissions, union, distinct), write cache, check. Missing key → `AUTHZ_PERMISSION_DENIED` (BR-AUTHZ-010). Postcondition: request proceeds to data-scope resolution in the use case (BR-AUTHZ-009).
@@ -199,7 +221,7 @@ Events emitted (outbox): `authz.role.updated` `{ roleId }`, `authz.assignment.gr
 
 ## 13. Approval, Notification & Report Touchpoints
 
-- **Approval:** none — role changes take effect immediately in V1 (a grant-approval chain is a Future item).
+- **Approval:** none owned — role changes take effect immediately in V1 (a grant-approval chain is a Future item). This module **serves** the engine: `RoleHolderPort` (§4.1) is the `role_holders` resolver and BR-APRV-006's fallback rung.
 - **Notification:** in-app to the affected user on grant/revoke ("your access changed"); no email (low stakes, high volume).
 - **Reports:** access review export (who holds what, per company) surfaces via reports.md registry; raw history via audit-log.
 

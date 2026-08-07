@@ -170,6 +170,8 @@ Step config shape (inside `chains.steps` and `chain_snapshot`, validated at conf
 
 Chain depth ≤ `approval.max_chain_depth` (default 5, settings.md). `approval_actions` is append-only (no RLS-exempt behavior — normal tenant RLS; append-only enforced by revoking UPDATE/DELETE from `hris_app` on this table, database-conventions §9 pattern).
 
+**Audited: `approval_chains` and `approval_delegations` only — registered in audit-log §4.2** (added 2026-08-07, A-196). The two are configuration: a chain decides who approves a payroll run and a delegation hands that authority to somebody else, which is the class of act §4.2 exists for. The four execution tables stay out under BR-AUD-004 — `approval_actions` is the authoritative trail and a channel-1 diff of every claim would be a second copy of it. Audit takes the terminal events instead (§12).
+
 ### Instance lifecycle (= ADR-0008, restated as implementation spec)
 
 ```mermaid
@@ -357,7 +359,9 @@ Events emitted (outbox): `approval.step.activated` `{ instanceId, stepId, assign
 - **Notification templates (notification.md):** step activated (push + in-app to assignees), reminder, escalation, terminal outcome to requester (+ returned-with-comment), stuck instance to System Administrator.
 - **Inbox:** actionable items derive from live `approval_assignees` rows (`idx_approval_assignees_inbox`); actor completion via `assignee.acted`, sibling/remainder closure on step/instance events; deep links to module detail screens.
 - **Reports:** approval aging / SLA breach summary via reports.md registry (source: oversight query).
-- **Org module dependency:** reporting-line (`direct_manager(n)`) and position-holder queries — organization.md must expose both port methods (forward requirement, recorded in PROGRESS notes).
+- **Org module dependency:** reporting-line (`direct_manager(n)`) and position-holder queries — organization.md §4.2 exposes `directManagers`, `positionHolders` and, for §8's reference check, `positionExists` (2026-08-07).
+- **Authz module dependency:** `RoleHolderPort` (authorization-rbac.md §4.1, declared 2026-08-07) — the `role_holders` resolver reads it by role id and BR-APRV-006's fallback rung reads it by role **key**, since `approval.fallback_role` names one. `user_roles` is that module's table and no other module may read it (ADR-0001 rule 2).
+- **`employee_directory` (ADR-0001 rule 6):** the engine resolves the requester's company and user id, and every timeline name, through the published view rather than a port. Three facts about identity, none of them encrypted or masked, on a page-sized read a port cannot serve without one round trip per row. **The requester's company comes from the view and never from `context.companyId`** — context is what the calling module chose to send, and a wrong company here selects another company's approvers.
 
 ## 14. Test Scenarios
 

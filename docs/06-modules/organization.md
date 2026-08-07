@@ -184,6 +184,18 @@ export interface OrgQueryPort {
   /** BR-ORG-003 holder rule — approval resolver `position_holder`. */
   positionHolders(positionId: string, asOf: string): Promise<string[]>;
   /**
+   * Does this position exist and is it live? approval-engine §8 validates a
+   * chain's resolver references at config-write time, and this is the one it
+   * cannot ask any other way (added 2026-08-07, A-196).
+   *
+   * A different question from `positionHolders` answering empty: a live but
+   * vacant position is what BR-APRV-006's vacancy ladder exists for, while a
+   * deleted one is a chain that can never resolve — and the difference between
+   * them is a field entry in the chain editor versus a stuck instance nobody
+   * finds until a request is late.
+   */
+  positionExists(positionId: string): Promise<boolean>;
+  /**
    * The reporting line walked **downwards** — employee.md §13 has listed a "team
    * inverse" among the methods it consumes since 2026-08-02 and this section
    * never wrote it; UC-EMP-011's team list is its first caller (added 2026-08-07,
@@ -372,7 +384,7 @@ Events emitted (outbox): `organization.assignment.changed` `{ employeeId, positi
 
 ## 13. Approval, Notification & Report Touchpoints
 
-- **Approval:** none owned — structure and placement changes are direct admin acts. This module **serves** the engine: `OrgQueryPort.directManagers` / `positionHolders` are the `direct_manager` and `position_holder` resolvers (approval-engine §13 forward requirement, fulfilled).
+- **Approval:** none owned — structure and placement changes are direct admin acts. This module **serves** the engine: `OrgQueryPort.directManagers` / `positionHolders` are the `direct_manager` and `position_holder` resolvers (approval-engine §13 forward requirement, fulfilled), and `positionExists` is that section's §8 reference check.
 - **Notification:** none — no templates registered. Employee-facing "you were moved" communication is a deliberate tenant act via announcement.md, not automatic. **2026-08-03: that module now exists** and the position holds unchanged — announcement targets by placement, so "everyone in Finance" is one rule rather than a per-move template this module would have had to own.
 - **2026-08-03 (announcement.md arrival):** `OrgQueryPort` gains **`audienceEmployeeIds`** (§4.2) — audience resolution over placement, added by the owner on first real caller, the `EmployeeHirePort` / `LeaveBalancePort` / `DevelopmentItemPort` pattern. It lives here and not in announcement for one decisive reason: **a department targeting rule descends the department subtree**, and that walk is this module's tree and this module's depth cap. Resolving it in the consumer would mean announcement joining `departments`, which ADR-0001 rule 2 forbids and no read-model view could fix, because a flat view cannot express ancestry without a materialized path this module has no other reason to keep. The method returns employee ids only — the user mapping is `employee_directory`'s, not this module's, since `employees.user_id` is not an org column.
 - **Import/Export:** none in V1 (§1 exclusion). `employee.master` import (employee.md) references branch/department/position/job-level **codes** — the natural keys defined here.
