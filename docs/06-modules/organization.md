@@ -156,10 +156,26 @@ No `version` column anywhere: all mutations are admin-web, nothing is offline-mu
 export const ORG_QUERY_PORT = Symbol('ORG_QUERY_PORT');
 
 export interface OrgQueryPort {
-  /** Live placement as-of a date; null when the employee has none (pre-assignment). */
+  /**
+   * Live placement as-of a date; null when the employee has none (pre-assignment).
+   *
+   * **The display names are part of the contract, added 2026-08-07 (employee.md's
+   * arrival, A-195).** As originally written this returned ids only, which made
+   * both of employee.md §7's placement shapes unimplementable: the grid renders
+   * `{ positionTitle, branchName, departmentName }`, `/me/profile` renders six
+   * names, and no consumer has a sanctioned channel to turn one of these ids into
+   * a name — `employee_directory` is about employees, and joining this module's
+   * tables is the ADR-0001 rule 2 violation the port exists to prevent. Resolving
+   * them here costs three extra joins on a query that already made two, over a
+   * page of at most a hundred rows. Additive: every existing consumer reads the
+   * same ids it always did.
+   */
   placement(employeeId: string, asOf: string): Promise<{
-    companyId: string; branchId: string; branchTimezone: string;
-    departmentId: string; positionId: string; jobLevelId: string;
+    companyId: string; companyName: string;
+    branchId: string; branchName: string; branchTimezone: string;
+    departmentId: string; departmentName: string;
+    positionId: string; positionTitle: string;
+    jobLevelId: string; jobLevelName: string;
   } | null>;
   /** Batch form for grids (employee.md list enrichment — added 2026-08-02). One query, keyed result. */
   placements(employeeIds: string[], asOf: string): Promise<Map<string, Awaited<ReturnType<OrgQueryPort['placement']>>>>;
@@ -167,6 +183,21 @@ export interface OrgQueryPort {
   directManagers(employeeId: string, levels: number, asOf: string): Promise<string[]>;
   /** BR-ORG-003 holder rule — approval resolver `position_holder`. */
   positionHolders(positionId: string, asOf: string): Promise<string[]>;
+  /**
+   * The reporting line walked **downwards** — employee.md §13 has listed a "team
+   * inverse" among the methods it consumes since 2026-08-02 and this section
+   * never wrote it; UC-EMP-011's team list is its first caller (added 2026-08-07,
+   * A-195). Returns the holders of every position reporting directly to a
+   * position the subject holds, so a manager occupying two seats sees both teams
+   * as one list.
+   *
+   * **Employee ids, not user ids, and no account filter** — the two ways it
+   * differs from `directManagers`, both deliberate. A direct report who cannot
+   * log in is still a direct report; BR-ORG-003's account filter exists so the
+   * approval engine cannot assign a step to somebody unable to act on it, which
+   * is a different question from who reports to whom.
+   */
+  directReports(employeeId: string, asOf: string): Promise<string[]>;
   /**
    * Audience resolution over placement (announcement.md BR-ANN-002 — added 2026-08-03).
    * Rules union; a `departmentIds` entry **descends its subtree**, `positionIds` and
